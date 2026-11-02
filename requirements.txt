@@ -1,0 +1,7 @@
+pdfplumber>=0.10
+pandas>=2.0
+openpyxl>=3.1
+scipy>=1.10
+streamlit>=1.30
+plotly>=5.18
+requests>=2.28      # only used by the optional online downloads
