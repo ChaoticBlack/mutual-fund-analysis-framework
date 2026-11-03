@@ -5,7 +5,7 @@ from ptracker.parsers.txn_statement import parse_lines, classify
 SAMPLE = """
 Transaction Statement
 From 09/08/2024 to 26/10/2026
-SHIVAM RAJESH RAJPUT (PAN : ABCDE1234F)
+ASHA KUMAR SHARMA (PAN : ABCDE1234F)
 Demo Equity Fund Reg (G) INF000A01234 [111/22]
 09/08/2024 Opening Cost and Unit Balance 0.00 0.0000
 28/08/2024 SIP 19,999.00 10.0000 1,999.9000 1,999.9000 1.00 0.00 0.00 20,000.00

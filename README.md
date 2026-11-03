@@ -11,10 +11,37 @@ benchmark, using the same cash flows (your actual SIP dates and amounts). Everyt
 | 4. NAV history + risk | done | Daily NAVs, rolling returns, drawdown, volatility, beta, alpha, capture ratios, Sharpe/Sortino |
 | 5. Streamlit app | done | Charts, tables, uploads and downloads on top of modules 1-4 |
 
+## Quick start
+1. `pip install -r requirements.txt` (inside a virtual environment, see Setup).
+2. Put your statement PDFs, factsheets, index files and NAV files in a **data folder outside this repository**.
+3. `streamlit run app.py`, set the data folder in the sidebar, and use "Add or update data".
+4. Read [METHODOLOGY.md](METHODOLOGY.md) before drawing conclusions from any number.
+
+## Privacy: what must never be committed
+Your statements, the generated workbooks, and index / NAV files are personal financial data. `.gitignore` excludes
+`data/`, `*.xlsx`, `*.pdf` and `*.csv`, and `tests/test_repo_hygiene.py` fails if a data file or something that looks like
+an e-mail, phone number or PAN appears in the repository folder. Keep the data folder outside the repo and the
+repository private unless you have reviewed it. If data is ever committed by mistake, deleting the file is not enough:
+it stays in git history, so rewrite the history (for example with `git filter-repo`) or recreate the repository, and treat
+anything that was ever public as exposed.
+
+## Disclaimer
+This tool describes what happened to your investments and how funds behaved. It is not investment, tax or legal advice,
+and past performance does not predict future returns. Check figures against your official statements and consult a
+qualified professional before acting. It is not affiliated with any fund house, distributor, AMFI, NSE or any data provider.
+
+## Data sources
+Your own statement and factsheet PDFs; index files you download from the index provider (e.g. niftyindices.com); and,
+optionally, online downloads that use unofficial public endpoints (niftyindices.com, AMFI's NAVAll.txt and MFapi.in).
+Those can change or stop working at any time and may have their own terms of use; the downloaded files are for your
+personal analysis and are not part of this repository.
+
 ## Setup
     python -m venv .venv
     .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
     pip install -r requirements.txt   # pdfplumber, pandas, openpyxl, scipy, streamlit, plotly, requests
+
+**Every metric, formula and chart is explained in [METHODOLOGY.md](METHODOLOGY.md).**
 
 ## The app
     streamlit run app.py
@@ -29,6 +56,7 @@ settings can be preset with the environment variable `PT_DATA_DIR`.
 | Funds | One fund at a time: value vs benchmarks, 6/12-month rolling returns, calendar years, drawdown, risk numbers |
 | Compare | XIRR, rupee gap and contribution by fund; tables against own benchmarks and comparators |
 | Risk | Risk table, up/down capture, return vs volatility, rolling-return consistency, comparator metrics |
+| Overlap | How much the funds hold the same companies and sectors; what you effectively own, looking through the funds |
 | Costs | Estimated regular-plan commission so far and next 12 months |
 | Holdings | Allocation from your valuation summary and per-fund factsheet holdings and sectors |
 | Data & Setup | What is ready, index and NAV plans, optional online downloads, warnings, ingestion log, Excel downloads |
@@ -72,6 +100,52 @@ discarded) and index / NAV files. Everything the command line does can be done f
     python -m ptracker risk --portfolio data/portfolio.xlsx --dir data/indexes --nav-dir data/nav --out data/risk.xlsx
 
 Re-running `ingest` with a newer statement merges new transactions and never duplicates old ones.
+
+## Updating your data (routine)
+
+New SIPs, new NAVs and new index levels arrive all the time; the workbooks are rebuilt from the sources, so updating is
+the same short routine each time. Run the commands in this order (PowerShell; adjust the folder names):
+
+    $d = "E:\portfolio_data"
+
+    # 1. Newest statement PDFs from your distributor portal: transaction statement from inception to today
+    #    (re-running is safe: transactions already stored are skipped) and, optionally, the valuation summary.
+    python -m ptracker ingest --txn "$d\statements\TxnStatement.pdf" --valuation "$d\statements\PortfolioValuationSummary.pdf" --out "$d\portfolio.xlsx" -v
+    #    -> look for "0 failed" and "N new transactions" (one per fund per SIP)
+
+    # 2. NAV history up to the new valuation date (downloads only the missing days)
+    python -m ptracker nav plan  --portfolio "$d\portfolio.xlsx" --nav-dir "$d\nav"
+    python -m ptracker nav fetch --portfolio "$d\portfolio.xlsx" --nav-dir "$d\nav"
+
+    # 3. Index levels up to the same date
+    python -m ptracker indexes plan --portfolio "$d\portfolio.xlsx" --dir "$d\indices"
+    #    any row that is not `ready`: drop the newly downloaded TRI files into the folder (overlaps are fine),
+    #    or:  python -m ptracker indexes fetch --portfolio "$d\portfolio.xlsx" --dir "$d\indices"
+
+    # 4. Results: open the app (it reloads whatever changed) ...
+    streamlit run app.py
+    #    ... or write the Excel reports
+    python -m ptracker analyze --portfolio "$d\portfolio.xlsx" --dir "$d\indices" --out "$d\analysis.xlsx"
+    python -m ptracker risk --portfolio "$d\portfolio.xlsx" --dir "$d\indices" --nav-dir "$d\nav" --out "$d\risk.xlsx"
+
+Do step 1 first: the valuation date, current values and what the NAV / index plans ask for all come from the newest
+statement. The same updates can be done from the app's sidebar ("Add or update data").
+
+**Less often**
+
+| What | When | How |
+|---|---|---|
+| Fund factsheets (holdings, expense ratio, exit load, manager) | monthly or quarterly | `factsheet` with the new PDFs (wildcards such as `"$d\factsheets\*.pdf"` work), then `link` |
+| Expense ratios | after each factsheet or AMFI TER update | `link` fills benchmark, exit load and a *blank* regular expense ratio, but never overwrites a value already in the Schemes sheet: edit `expense_ratio_regular_pct` by hand (or clear the cell and run `link`). Enter `expense_ratio_direct_pct` by hand or with `costs import` |
+| A new fund in your SIPs | when you start it | `ingest` (it appears in Schemes) -> `factsheet` + `link` for it -> `indexes plan` (add its benchmark TRI) -> `nav fetch` -> enter its direct expense ratio |
+| A benchmark name that does not match your index files | when `indexes plan` shows `missing` with a "similar name" note | add a line to `aliases.csv` in the index folder, or type the right name in `benchmark_name` |
+
+**What you edit by hand** (only these columns of the Schemes sheet; they survive every re-import):
+`benchmark_name`, `benchmark_file`, `nav_file`, `expense_ratio_regular_pct`, `expense_ratio_direct_pct`, `notes`.
+Close Excel before running a command, and keep a dated copy of `portfolio.xlsx` before big changes.
+
+**Not yet covered by real-statement tests:** a fund you have fully sold. Redemptions and switches are tested on constructed
+examples only, so if a statement containing them produces warnings, keep the PDF and check the numbers before relying on them.
 
 ## Command reference
 | Command | Purpose | Useful options |
@@ -179,12 +253,18 @@ grand totals, and the transaction statement agrees with the valuation summary. A
 The app is tested with stand-ins for Streamlit and Plotly (`tests/fakes.py`), which proves every page runs on real computed
 data but cannot judge appearance. Report any visual or runtime problem you see in the real app.
 
-    python -m unittest discover -s tests -v
-    # with your real files (also enables the known-answer tests):
-    set PT_SAMPLE_DIR=C:\path\to\pdfs
+    python -m unittest discover -s tests -v          # unit tests only, no personal data needed (also run by GitHub Actions)
+
+    # optional: also check the code against YOUR files (properties that must hold for any valid statement)
+    set PT_SAMPLE_DIR=C:\path\to\pdfs                 # TxnStatement*.pdf, PortfolioValuationSummary*.pdf, Factsheet*.pdf
     set PT_INDEX_DIR=C:\path\to\data\indexes
-    set PT_PORTFOLIO=C:\path\to\data\portfolio.xlsx   # also enables the known-answer analytics test
+    set PT_PORTFOLIO=C:\path\to\data\portfolio.xlsx
+    set PT_FACTSHEETS=C:\path\to\data\factsheets.xlsx
     python -m unittest discover -s tests -v
+
+The real-file tests contain none of your figures. They check, for example, that every total reconciles, that the XIRR
+computed here matches the XIRR printed by your distributor, and that the generated workbook contains no line of your
+statement's header block (name, address, contacts).
 
 ## Code layout
     ptracker/
@@ -193,8 +273,9 @@ data but cannot judge appearance. Report any visual or runtime problem you see i
       parsers/    txn_statement.py  valuation_summary.py  factsheet.py
       indexes/    spec.py  files.py  plan.py  nse_fetch.py
       nav/        amfi.py  store.py  mfapi.py  nav_plan.py
-      analytics/  xirr.py  replicate.py  resolve.py  engine.py  costs.py  risk.py
-    tests/
+      analytics/  xirr.py  replicate.py  resolve.py  engine.py  costs.py  risk.py  overlap.py
+    tests/        unit tests, fake streamlit/plotly, repo-hygiene guard
+    .github/workflows/tests.yml     runs the unit tests on every push
 
 ## Parser scope
 Tuned to one distributor's statement layout. Redemption, switch and dividend rows are covered by synthetic tests only;

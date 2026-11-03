@@ -146,7 +146,7 @@ def save_portfolio(path: str, txn: ParsedTxnStatement, val: ParsedValuation | No
             "last_ingested": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "ptracker_version": __version__}
     for k, v in (sources or {}).items():
-        meta[f"source_{k}"] = os.path.basename(v)
+        meta[f"source_{k}"] = os.path.basename(v) if include_name else "(omitted)"
     meta_df = pd.DataFrame({"key": list(meta), "value": [str(v) if v is not None else "" for v in meta.values()]})
 
     msgs = [("warn", w) for w in txn.warnings] + ([("warn", w) for w in val.warnings] if val else [])

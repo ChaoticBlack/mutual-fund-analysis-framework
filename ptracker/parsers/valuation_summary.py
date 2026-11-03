@@ -202,8 +202,9 @@ def parse_pdf(pdf_path: str, password: str | None = None) -> ParsedValuation:
                     holdings[-1]["folio"] = folio_only["f"]
                 continue
             else:
-                if not ln.startswith(("SHIVAM", "Avg", "Scheme", "Purchase", "NAV", "Days", "Abs", "(%)")) \
-                        and "(PAN" not in ln and ln not in ("Mutual Fund", "Holding"):
+                if not ln.startswith(("Avg", "Scheme", "Purchase", "NAV", "Days", "Abs", "(%)")) \
+                        and "(PAN" not in ln and "Portfolio Valuation Summary" not in ln \
+                        and not re.match(r"^Page \d+ of \d+", ln) and ln not in ("Mutual Fund", "Holding"):
                     pending.append(ln)
                 continue
             holdings.append({
